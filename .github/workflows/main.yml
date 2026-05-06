@@ -1,0 +1,42 @@
+name: Build EduNest APK from ZIP
+
+on:
+  workflow_dispatch:  # Allows you to click a button to run the build
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up JDK 17
+      uses: actions/setup-java@v3
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+        
+    - name: Unzip Source Files
+      # This extracts your app.zip into a new folder named 'source_code'
+      run: unzip app.zip -d source_code
+    
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v2
+    
+    - name: Grant execute permission for gradlew
+      run: |
+        cd source_code/android
+        chmod +x gradlew
+    
+    - name: Build Debug APK
+      run: |
+        cd source_code/android
+        ./gradlew assembleDebug
+    
+    - name: Upload APK
+      uses: actions/upload-artifact@v3
+      with:
+        name: edunest-debug-apk
+        path: source_code/android/app/build/outputs/apk/debug/app-debug.apk
+        
