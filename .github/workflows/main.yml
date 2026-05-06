@@ -1,4 +1,4 @@
-name: Build EduNest APK from ZIP
+name: Build EduNest Capacitor APK
 
 on:
   workflow_dispatch:
@@ -16,28 +16,50 @@ jobs:
       with:
         distribution: 'temurin'
         java-version: '17'
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20' # Standard stable version for Capacitor
         
     - name: Unzip Source Files
       run: unzip app.zip -d source_code
+
+    - name: Install Node Dependencies
+      run: |
+        # Find where the package.json is located to install missing Capacitor files
+        PROJECT_ROOT=$(find source_code -name "package.json" | head -n 1)
+        
+        if [ -n "$PROJECT_ROOT" ]; then
+          PROJECT_DIR=$(dirname "$PROJECT_ROOT")
+          echo "Found Node project in: $PROJECT_DIR"
+          cd "$PROJECT_DIR"
+          
+          # Install dependencies
+          npm install
+          
+          # Sync the web code with the Android folder
+          npx cap sync android || echo "Sync skipped"
+        else
+          echo "Warning: No package.json found. The build might still fail if dependencies are missing."
+        fi
     
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
     
     - name: Find and Build APK
       run: |
-        # Automatically search for the gradlew file inside the unzipped folder
+        # Find the gradlew file and build the app
         GRADLE_PATH=$(find source_code -name "gradlew" | head -n 1)
         
         if [ -z "$GRADLE_PATH" ]; then
-          echo "Error: Could not find the gradlew file in your ZIP."
+          echo "Error: Could not find the gradlew file."
           exit 1
         fi
         
-        # Get the directory that contains the gradlew file
         GRADLE_DIR=$(dirname "$GRADLE_PATH")
         echo "Found Android project in: $GRADLE_DIR"
         
-        # Navigate to that specific directory and build
         cd "$GRADLE_DIR"
         chmod +x gradlew
         ./gradlew assembleDebug
@@ -46,6 +68,5 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: edunest-debug-apk
-        # The ** wildcard tells GitHub to search all folders for the finished APK
         path: '**/*.apk'
         
