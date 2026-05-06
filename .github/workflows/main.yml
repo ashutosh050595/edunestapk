@@ -20,47 +20,43 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '20' # Standard stable version for Capacitor
+        node-version: '20'
         
     - name: Unzip Source Files
       run: unzip app.zip -d source_code
 
-    - name: Install Node Dependencies
+    - name: Force Install Capacitor Libraries
       run: |
-        # Find where the package.json is located to install missing Capacitor files
-        PROJECT_ROOT=$(find source_code -name "package.json" | head -n 1)
+        # 1. Locate the 'android' folder
+        ANDROID_DIR=$(find source_code -type d -name "android" | head -n 1)
         
-        if [ -n "$PROJECT_ROOT" ]; then
-          PROJECT_DIR=$(dirname "$PROJECT_ROOT")
-          echo "Found Node project in: $PROJECT_DIR"
-          cd "$PROJECT_DIR"
-          
-          # Install dependencies
-          npm install
-          
-          # Sync the web code with the Android folder
-          npx cap sync android || echo "Sync skipped"
-        else
-          echo "Warning: No package.json found. The build might still fail if dependencies are missing."
-        fi
-    
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
-    
-    - name: Find and Build APK
-      run: |
-        # Find the gradlew file and build the app
-        GRADLE_PATH=$(find source_code -name "gradlew" | head -n 1)
-        
-        if [ -z "$GRADLE_PATH" ]; then
-          echo "Error: Could not find the gradlew file."
+        if [ -z "$ANDROID_DIR" ]; then
+          echo "Error: Could not find the android directory."
           exit 1
         fi
         
-        GRADLE_DIR=$(dirname "$GRADLE_PATH")
-        echo "Found Android project in: $GRADLE_DIR"
+        # 2. Go to the parent folder (where node_modules is supposed to be)
+        PARENT_DIR=$(dirname "$ANDROID_DIR")
+        echo "Navigating to project root: $PARENT_DIR"
+        cd "$PARENT_DIR"
         
-        cd "$GRADLE_DIR"
+        # 3. Force create a basic Node project and download the missing Android library
+        echo "Downloading @capacitor/android to satisfy Gradle..."
+        npm init -y
+        npm install @capacitor/android @capacitor/core @capacitor/cli
+        
+        # 4. Sync files if possible
+        npx cap sync android || echo "Sync skipped, continuing build..."
+
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+    
+    - name: Build APK
+      run: |
+        # Find the android folder again and run the build
+        ANDROID_DIR=$(find source_code -type d -name "android" | head -n 1)
+        cd "$ANDROID_DIR"
+        
         chmod +x gradlew
         ./gradlew assembleDebug
     
