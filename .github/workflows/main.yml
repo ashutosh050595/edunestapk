@@ -25,45 +25,61 @@ jobs:
     - name: Unzip Source Files
       run: unzip app.zip -d source_code
 
-    - name: Force Install Capacitor Libraries
+    - name: Inject ERP Content and Generate Branding
       run: |
-        # Find the actual gradlew file, strictly ignoring any node_modules
+        # 1. Locate the project root securely
         GRADLE_PATH=$(find source_code -name "gradlew" -not -path "*/node_modules/*" | head -n 1)
-        
-        if [ -z "$GRADLE_PATH" ]; then
-          echo "Error: Could not find gradlew."
-          exit 1
-        fi
-        
-        # Navigate to the parent directory to install Node modules
         GRADLE_DIR=$(dirname "$GRADLE_PATH")
         PARENT_DIR=$(dirname "$GRADLE_DIR")
         
-        echo "Navigating to project root: $PARENT_DIR"
         cd "$PARENT_DIR"
         
-        echo "Installing Capacitor dependencies..."
+        # 2. Install Capacitor core and Asset Generator
         npm init -y
-        npm install @capacitor/android @capacitor/core @capacitor/cli
+        npm install @capacitor/android @capacitor/core @capacitor/cli @capacitor/assets
         
-        npx cap sync android || echo "Sync skipped, continuing build..."
+        # 3. Locate the 'out' directory and inject it into Android
+        # Based on your config, this holds the actual compiled School ERP
+        OUT_DIR=$(find . -type d -name "out" -not -path "*/node_modules/*" | head -n 1)
+        
+        if [ -n "$OUT_DIR" ]; then
+          echo "Found compiled 'out' directory. Injecting application..."
+          mkdir -p "$GRADLE_DIR/app/src/main/assets/public"
+          cp -r "$OUT_DIR"/* "$GRADLE_DIR/app/src/main/assets/public/"
+        else
+          echo "Warning: Could not find the 'out' directory."
+        fi
+        
+        # 4. Locate the specific icon in public/assets/
+        mkdir -p assets
+        ICON_PATH=$(find . -type f -path "*/public/assets/icon.png" -not -path "*/node_modules/*" | head -n 1)
+        
+        if [ -n "$ICON_PATH" ]; then
+          echo "Found Sacred Heart branding at $ICON_PATH. Generating splash screens..."
+          cp "$ICON_PATH" assets/icon.png
+          cp "$ICON_PATH" assets/splash.png
+          
+          # Slice the image into the required Android mipmap/drawable folders
+          npx @capacitor/assets generate --android
+        else
+          echo "Warning: icon.png not found in public/assets/"
+        fi
 
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
     
     - name: Build APK
       run: |
-        # Find gradlew again, ensuring we are in your actual project folder
         GRADLE_PATH=$(find source_code -name "gradlew" -not -path "*/node_modules/*" | head -n 1)
         GRADLE_DIR=$(dirname "$GRADLE_PATH")
         
-        echo "Building Android app in: $GRADLE_DIR"
+        echo "Compiling Android app in: $GRADLE_DIR"
         cd "$GRADLE_DIR"
         
         chmod +x gradlew
         ./gradlew assembleDebug
     
-    - name: Upload APK
+    - name: Upload Finished APK
       uses: actions/upload-artifact@v4
       with:
         name: edunest-debug-apk
